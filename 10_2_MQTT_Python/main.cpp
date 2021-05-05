@@ -2,6 +2,9 @@
 #include "MQTTNetwork.h"
 #include "MQTTmbed.h"
 #include "MQTTClient.h"
+#include "stm32l475e_iot01_accelero.h"
+
+using namespace std::chrono;
 
 // GLOBAL VARIABLES
 WiFiInterface *wifi;
@@ -15,6 +18,7 @@ const char* topic = "Mbed";
 
 Thread mqtt_thread(osPriorityHigh);
 EventQueue mqtt_queue;
+Ticker ACC_Ticker;
 
 void messageArrived(MQTT::MessageData& md) {
     MQTT::Message &message = md.message;
@@ -31,8 +35,11 @@ void messageArrived(MQTT::MessageData& md) {
 void publish_message(MQTT::Client<MQTTNetwork, Countdown>* client) {
     message_num++;
     MQTT::Message message;
-    char buff[100];
-    sprintf(buff, "QoS0 Hello, Python! #%d", message_num);
+    char buff[200];
+    int16_t pDataXYZ[3] = {0};
+    BSP_ACCELERO_AccGetXYZ(pDataXYZ);
+    sprintf(buff, "Accelerometer values: (%d, %d, %d)", pDataXYZ[0], pDataXYZ[1], pDataXYZ[2]);
+//     sprintf(buff, "QoS0 Hello, Python! #%d", message_num);
     message.qos = MQTT::QOS0;
     message.retained = false;
     message.dup = false;
@@ -96,9 +103,10 @@ int main() {
     if (client.subscribe(topic, MQTT::QOS0, messageArrived) != 0){
             printf("Fail to subscribe\r\n");
     }
-
+    BSP_ACCELERO_Init();
     mqtt_thread.start(callback(&mqtt_queue, &EventQueue::dispatch_forever));
     btn2.rise(mqtt_queue.event(&publish_message, &client));
+    ACC_Ticker.attach(mqtt_queue.event(&publish_message, &client), 1s);
     //btn3.rise(&close_mqtt);
 
     int num = 0;
